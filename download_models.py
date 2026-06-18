@@ -20,6 +20,16 @@ SIZES = {
 }
 
 
+def download_model(model_size, base_dir):
+    if model_size not in MODELS:
+        raise ValueError(f"Modello sconosciuto: {model_size}. Opzioni: {', '.join(MODELS.keys())}")
+    repo_id = MODELS[model_size]
+    local_dir = os.path.join(base_dir, model_size)
+    os.makedirs(local_dir, exist_ok=True)
+    snapshot_download(repo_id=repo_id, local_dir=local_dir)
+    return local_dir
+
+
 def main():
     base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "whisper-models")
 
@@ -37,20 +47,7 @@ def main():
     print()
 
     for name in selected:
-        if name not in MODELS:
-            print(f"Modello sconosciuto: {name}. Opzioni: {', '.join(MODELS.keys())}")
-            continue
-
-        repo_id = MODELS[name]
-        local_dir = os.path.join(base_dir, name)
-        os.makedirs(local_dir, exist_ok=True)
-
-        print(f"Download {name} ({SIZES[name]}) da {repo_id} ...")
-        snapshot_download(
-            repo_id=repo_id,
-            local_dir=local_dir,
-        )
-        print(f"Completato: {local_dir}\n")
+        download_model(name, base_dir)
 
     print("Tutti i download completati.")
     print(f"I modelli si trovano in: {base_dir}")

@@ -1,0 +1,53 @@
+name: Build EXE
+
+on:
+  push:
+    branches: [master]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconsole --onedir --name TTS --icon ThaSkull.ico `
+            --hidden-import faster_whisper --hidden-import ctranslate2 `
+            --hidden-import tokenizers --hidden-import sounddevice `
+            --hidden-import soundfile --hidden-import PIL._tkinter_finder `
+            --hidden-import pyautogui._pyautogui_win --hidden-import pyperclip `
+            --hidden-import pystray --hidden-import _cffi_backend `
+            --hidden-import tkinter `
+            --collect-all faster_whisper --collect-all ctranslate2 `
+            --collect-all tokenizers --collect-all sounddevice main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TTS-exe
+          path: dist/TTS/
+
+      - name: Zip for release
+        if: github.event_name == 'release'
+        run: |
+          Compress-Archive -Path dist/TTS/* -DestinationPath TTS-${{ github.event.release.tag_name }}.zip
+
+      - name: Upload to release
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} TTS-${{ github.event.release.tag_name }}.zip
