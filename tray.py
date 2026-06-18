@@ -22,34 +22,30 @@ class TrayIcon:
         self._on_open_settings = on_open_settings
         self._icon = self._build_icon()
 
+    @staticmethod
+    def _make_model_cb(callback, size):
+        return lambda icon, item: callback(size)
+
     def _build_menu(self):
         model_items = []
         for size in _MODEL_SIZES:
             model_items.append(
                 pystray.MenuItem(
                     size,
-                    lambda _icon, _item, sz=size: self._on_model_change(sz),
-                    checked=lambda _item, sz=size: self._model == sz,
+                    self._make_model_cb(self._on_model_change, size),
+                    checked=lambda item, sz=size: self._model == sz,
                     radio=True,
                 )
             )
 
         return pystray.Menu(
-            pystray.MenuItem(
-                lambda _icon, _item: f"Dictate-Win",
-                None,
-                enabled=False,
-            ),
-            pystray.MenuItem(
-                lambda _icon, _item: f"Hotkey: {self._hotkey_display()}",
-                None,
-                enabled=False,
-            ),
+            pystray.MenuItem("Dictate-Win", lambda icon, item: None, enabled=False),
+            pystray.MenuItem(f"Hotkey: {self._hotkey_display()}", lambda icon, item: None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Modello", pystray.Menu(*model_items)),
-            pystray.MenuItem("Apri impostazioni", lambda _icon, _item: self._on_open_settings()),
+            pystray.MenuItem("Apri impostazioni", lambda icon, item: self._on_open_settings()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Esci", lambda _icon: self._on_exit()),
+            pystray.MenuItem("Esci", lambda icon: self._on_exit()),
         )
 
     def _build_icon(self):
