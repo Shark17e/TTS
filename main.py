@@ -37,20 +37,24 @@ def main():
         try:
             tray.set_recording()
             audio = recorder.record()
-            if audio is None:
-                return
-            tray.set_processing()
-            text = transcriber.transcribe(audio)
-            if text:
-                paste_text(text)
+            if audio is not None:
+                tray.set_processing()
+                text = transcriber.transcribe(audio)
+                if text:
+                    paste_text(text)
+            tray.set_idle()
         except Exception as e:
             print(f"Errore: {e}", file=sys.stderr)
             tray.set_error(str(e)[:60])
-        else:
-            tray.set_idle()
 
     def on_hotkey():
-        if recorder is not None and recorder.is_recording:
+        if recorder is None:
+            tray.set_error("Microfono non disponibile")
+            return
+        if transcriber is None:
+            tray.set_error("Modello non caricato")
+            return
+        if recorder.is_recording:
             recorder.stop()
             return
         if not _lock.acquire(blocking=False):
