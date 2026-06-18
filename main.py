@@ -1,4 +1,3 @@
-import os
 import sys
 import threading
 
@@ -6,6 +5,7 @@ from config import load_config, save_config, get_config_path
 from hotkey import HotkeyListener
 from paster import paste_text
 from recorder import Recorder
+from settings import open_settings
 from transcriber import Transcriber
 from tray import TrayIcon
 
@@ -19,13 +19,7 @@ def main():
         print(f"Errore caricamento config.json: {e}", file=sys.stderr)
         sys.exit(1)
 
-    tray = TrayIcon(
-        config=config,
-        on_exit=lambda: tray.stop(),
-        on_model_change=lambda model: _on_model_change(model),
-        on_open_settings=lambda: os.startfile(config_path),
-    )
-    tray.set_error("Avvio...")
+    _lock = threading.Lock()
 
     try:
         recorder = Recorder(config)
@@ -39,6 +33,22 @@ def main():
         print(f"Errore caricamento modello: {e}", file=sys.stderr)
         transcriber = None
 
+    # --- callbacks ---
+
+    def _on_hotkey():
+        if recorder is None:
+            tray.set_error("Microfono non disponibile")
+            return
+        if transcriber is None:
+            tray.set_error("Modello non caricato")
+            return
+        if recorder.is_recording:
+            recorder.stop()
+            return
+        if not _lock.acquire(blocking=False):
+            return
+        threading.Thread(target=_work_wrapper, daemon=True).start()
+
     def _on_model_change(new_model):
         nonlocal config
         config["whisper"]["model_size"] = new_model
@@ -47,7 +57,36 @@ def main():
         if transcriber is not None:
             transcriber.reload(new_model)
 
-    _lock = threading.Lock()
+    def _on_open_settings():
+        def after_save(new_config):
+            nonlocal config, hotkey
+            old_model = config["whisper"]["model_size"]
+            old_hotkey_key = config["hotkey"]["key"]
+            old_hotkey_mods = list(config["hotkey"]["modifiers"])
+            config = new_config
+
+            if (
+                config["hotkey"]["key"] != old_hotkey_key
+                or config["hotkey"]["modifiers"] != old_hotkey_mods
+            ):
+                new_hotkey = HotkeyListener(config, _on_hotkey)
+                try:
+                    new_hotkey.start()
+                except Exception as e:
+                    print(f"Errore registrazione nuovo hotkey: {e}", file=sys.stderr)
+                else:
+                    old_hotkey = hotkey
+                    hotkey = new_hotkey
+                    old_hotkey.stop()
+
+            if config["whisper"]["model_size"] != old_model:
+                tray.update_model(config["whisper"]["model_size"])
+                if transcriber is not None:
+                    transcriber.reload(config["whisper"]["model_size"])
+
+            print(f"Hotkey aggiornato: {hotkey.hotkey_str}")
+
+        open_settings(after_save)
 
     def _work():
         try:
@@ -63,37 +102,29 @@ def main():
             print(f"Errore: {e}", file=sys.stderr)
             tray.set_error(str(e)[:60])
 
-    def on_hotkey():
-        if recorder is None:
-            tray.set_error("Microfono non disponibile")
-            return
-        if transcriber is None:
-            tray.set_error("Modello non caricato")
-            return
-        if recorder.is_recording:
-            recorder.stop()
-            return
-        if not _lock.acquire(blocking=False):
-            return
-        threading.Thread(target=_work_wrapper, daemon=True).start()
-
     def _work_wrapper():
         try:
             _work()
         finally:
             _lock.release()
 
-    hotkey = HotkeyListener(config, on_hotkey)
+    # --- init ---
 
+    hotkey = HotkeyListener(config, _on_hotkey)
     try:
         hotkey.start()
     except Exception as e:
         print(f"Errore registrazione hotkey: {e}", file=sys.stderr)
-        tray.set_error("Hotkey")
         hotkey = None
 
-    print(f"Dictate-Win avviato. Hotkey: {hotkey.hotkey_str if hotkey else 'N/A'}")
+    tray = TrayIcon(
+        config=config,
+        on_exit=lambda: tray.stop(),
+        on_model_change=_on_model_change,
+        on_open_settings=_on_open_settings,
+    )
     tray.set_idle()
+    print(f"Dictate-Win avviato. Hotkey: {hotkey.hotkey_str}")
     tray.run()
 
     if hotkey is not None:

@@ -13,6 +13,16 @@ _KEY_ALIASES = {
     "copilot": "f23",
 }
 
+# VK codes for modifier tracking in low-level hook
+_MOD_VK = {
+    0xA2: "ctrl", 0xA3: "ctrl",  # Ctrl
+    0xA0: "shift", 0xA1: "shift",  # Shift
+    0xA4: "alt", 0xA5: "alt",  # Alt
+    0x5B: "win", 0x5C: "win",  # Win
+}
+
+_F23_VK = 0x86
+
 
 def _build_hotkey_str(config):
     parts = [f"<{m}>" for m in config["hotkey"]["modifiers"]]
@@ -25,17 +35,51 @@ class HotkeyListener:
     def __init__(self, config, on_trigger):
         self._config = config
         self._on_trigger = on_trigger
-        self._listener = None
         self._hotkey_str = _build_hotkey_str(config)
+        self._listeners = []
 
     @property
     def hotkey_str(self):
         return self._hotkey_str
 
     def start(self):
-        self._listener = keyboard.GlobalHotKeys({self._hotkey_str: self._on_trigger})
-        self._listener.start()
+        raw_key = _KEY_ALIASES.get(self._config["hotkey"]["key"], self._config["hotkey"]["key"])
+
+        if raw_key == "f23":
+            self._start_copilot_mode()
+        else:
+            ghk = keyboard.GlobalHotKeys({self._hotkey_str: self._on_trigger})
+            ghk.start()
+            self._listeners.append(ghk)
+
+    def _start_copilot_mode(self):
+        expected_mods = set(self._config["hotkey"]["modifiers"])
+        pressed = set()
+
+        def event_filter(msg, data):
+            nonlocal pressed
+            vk = data.vkCode
+
+            if vk in _MOD_VK:
+                mod = _MOD_VK[vk]
+                is_down = msg in (0x0100, 0x0104)
+                if is_down:
+                    pressed.add(mod)
+                else:
+                    pressed.discard(mod)
+
+            if vk == _F23_VK and pressed == expected_mods:
+                self._on_trigger()
+                return False
+            return True
+
+        listener = keyboard.Listener(
+            on_press=None,
+            win32_event_filter=event_filter,
+        )
+        listener.start()
+        self._listeners.append(listener)
 
     def stop(self):
-        if self._listener is not None:
-            self._listener.stop()
+        for listener in self._listeners:
+            listener.stop()
