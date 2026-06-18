@@ -25,11 +25,15 @@ def main():
 
     selected = sys.argv[1:] if len(sys.argv) > 1 else list(MODELS.keys())
 
-    total_size = sum(
-        int(v.split()[0]) for k, v in SIZES.items() if k in selected for v in [v]
-    )
+    def _parse_mb(s):
+        num = float(s.split()[0].lstrip("~"))
+        if "GB" in s:
+            return int(num * 1024)
+        return int(num)
+
+    total_mb = sum(_parse_mb(v) for k, v in SIZES.items() if k in selected)
     print(f"Modelli da scaricare: {', '.join(selected)}")
-    print(f"Spazio stimato: ~{total_size} MB (~{total_size/1024:.1f} GB)")
+    print(f"Spazio stimato: ~{total_mb} MB (~{total_mb/1024:.1f} GB)")
     print()
 
     for name in selected:
@@ -45,8 +49,6 @@ def main():
         snapshot_download(
             repo_id=repo_id,
             local_dir=local_dir,
-            local_dir_use_symlinks=False,
-            resume_download=True,
         )
         print(f"Completato: {local_dir}\n")
 
