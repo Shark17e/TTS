@@ -50,12 +50,14 @@ def _find_models_in_folder(folder):
 
 
 def _ensure_model(config):
+    searched = _model_path(config)
     if _model_is_available(config):
         return True
 
     ret = ctypes.windll.user32.MessageBoxW(
         0,
         "Nessun modello Whisper trovato.\n\n"
+        f"Ricercato in:\n{searched}\n\n"
         "Hai già una cartella con i modelli?\n"
         "Seleziona Sì per scegliere la cartella,\n"
         "No per scaricarli ora.",
@@ -66,6 +68,7 @@ def _ensure_model(config):
     if ret == 6:
         root = tk.Tk()
         root.withdraw()
+        root.attributes('-topmost', True)
         folder = filedialog.askdirectory(title="Seleziona cartella whisper-models")
         root.destroy()
         if folder:
@@ -305,7 +308,11 @@ def main():
 
     def _on_model_folder_change():
         nonlocal config, transcriber
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
         folder = filedialog.askdirectory(title="Seleziona cartella con modelli Whisper (whisper-models)")
+        root.destroy()
         if not folder:
             return
         found = _find_models_in_folder(folder)
