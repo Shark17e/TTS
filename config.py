@@ -1,6 +1,8 @@
 import json
 import os
 
+from paths import get_base_dir
+
 _DEFAULT_CONFIG = {
     "hotkey": {
         "modifiers": ["ctrl", "shift"],
@@ -23,7 +25,7 @@ _DEFAULT_CONFIG = {
 
 
 def get_config_path():
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    return os.path.join(get_base_dir(), "config.json")
 
 
 def load_config(path=None):

@@ -2,6 +2,7 @@ import os
 import threading
 
 from faster_whisper import WhisperModel
+from paths import get_base_dir
 
 
 class Transcriber:
@@ -16,7 +17,7 @@ class Transcriber:
     def _get_model_path(self):
         model_size = self._config["whisper"]["model_size"]
         model_dir = self._config["whisper"]["model_dir"]
-        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), model_dir)
+        base = os.path.join(get_base_dir(), model_dir)
         local = os.path.join(base, model_size)
         if os.path.isdir(local):
             return local

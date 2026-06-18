@@ -1,10 +1,10 @@
 import os
 import sys
 import threading
+import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox, filedialog
 
-# Nascondi console appena possibile (prima di qualsiasi output)
 if sys.platform == "win32":
     import ctypes
     ctypes.windll.user32.ShowWindow(
@@ -14,88 +14,227 @@ if sys.platform == "win32":
 from config import load_config, save_config, get_config_path
 from hotkey import HotkeyListener
 from paster import paste_text
+from paths import get_base_dir, models_dir
 from recorder import Recorder
 from transcriber import Transcriber
 from tray import TrayIcon
 
 
-def _model_is_available(config):
-    model_size = config["whisper"]["model_size"]
-    model_dir = config["whisper"]["model_dir"]
-    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), model_dir)
-    local = os.path.join(base, model_size)
-    return os.path.isfile(os.path.join(local, "model.bin"))
+MODEL_NAMES = ["tiny", "base", "small", "medium", "large-v3"]
+SIZES_LABEL = {
+    "tiny": "~150 MB",
+    "base": "~300 MB",
+    "small": "~500 MB",
+    "medium": "~1.5 GB",
+    "large-v3": "~3 GB",
+}
+
+
+def _model_path(config, model_size=None):
+    size = model_size or config["whisper"]["model_size"]
+    d = config["whisper"]["model_dir"]
+    base = os.path.join(get_base_dir(), d) if not os.path.isabs(d) else d
+    return os.path.join(base, size)
+
+
+def _model_is_available(config, model_size=None):
+    return os.path.isfile(os.path.join(_model_path(config, model_size), "model.bin"))
+
+
+def _find_models_in_folder(folder):
+    found = []
+    for name in MODEL_NAMES:
+        if os.path.isfile(os.path.join(folder, name, "model.bin")):
+            found.append(name)
+    return found
 
 
 def _ensure_model(config):
     if _model_is_available(config):
         return True
 
-    import ctypes
-    from download_models import download_model, SIZES, MODELS
-
-    model_size = config["whisper"]["model_size"]
-    size_str = SIZES.get(model_size, "?")
-    model_names = ", ".join(f"{k} ({v})" for k, v in SIZES.items())
-
-    msg = (
-        f"Modello Whisper '{model_size}' non trovato.\n\n"
-        f"Il modello occupa circa {size_str}.\n"
-        f"Scaricarlo ora? (richiede connessione internet)\n\n"
-        f"Modelli disponibili: {model_names}"
-    )
-
     ret = ctypes.windll.user32.MessageBoxW(
-        0, msg, "TTS - Modello mancante", 4 | 32
+        0,
+        "Nessun modello Whisper trovato.\n\n"
+        "Hai già una cartella con i modelli?\n"
+        "Seleziona Sì per scegliere la cartella,\n"
+        "No per scaricarli ora.",
+        "TTS - Modelli mancanti",
+        4 | 32,
     )
 
-    if ret != 6:
-        return False
+    if ret == 6:
+        folder = filedialog.askdirectory(title="Seleziona cartella whisper-models")
+        if folder:
+            found = _find_models_in_folder(folder)
+            if found:
+                config["whisper"]["model_dir"] = folder
+                save_config(config, get_config_path())
+                if config["whisper"]["model_size"] not in found:
+                    config["whisper"]["model_size"] = found[0]
+                    save_config(config, get_config_path())
+                return True
+            else:
+                ctypes.windll.user32.MessageBoxW(
+                    0, "Nella cartella selezionata non ci sono modelli validi.",
+                    "TTS", 16
+                )
 
+    return _download_dialog(config)
+
+
+def _download_dialog(config):
     root = tk.Tk()
-    root.title("TTS - Download modello")
-    root.geometry("420x130")
+    root.title("TTS - Scarica modelli")
+    root.geometry("480x420")
     root.resizable(False, False)
     root.update_idletasks()
     x = (root.winfo_screenwidth() // 2) - (root.winfo_width() // 2)
     y = (root.winfo_screenheight() // 2) - (root.winfo_height() // 2)
     root.geometry(f"+{x}+{y}")
 
-    tk.Label(root, text=f"Download {model_size} ({size_str}) in corso...").pack(pady=(20, 5))
-    bar = ttk.Progressbar(root, mode="indeterminate")
-    bar.pack(fill=tk.X, padx=20, pady=5)
-    bar.start()
-    status = tk.Label(root, text="", fg="gray")
-    status.pack()
+    cancel_event = threading.Event()
+    result = {"success": False, "downloaded": []}
 
-    def _ok():
-        root.destroy()
+    tk.Label(root, text="Seleziona i modelli da scaricare:", font=("", 10, "bold")).pack(pady=(10, 0))
 
-    def _done():
-        bar.stop()
-        status.config(text="Download completato!")
-        tk.Button(root, text="OK", command=_ok).pack(pady=10)
+    vars = {}
+    frame = tk.Frame(root)
+    frame.pack(pady=5)
+    for name in MODEL_NAMES:
+        v = tk.BooleanVar(value=False)
+        cb = tk.Checkbutton(frame, text=f"{name:8s}  {SIZES_LABEL[name]:>8s}", variable=v, anchor="w")
+        cb.pack(fill=tk.X, padx=20, pady=1)
+        vars[name] = v
+
+    bar = ttk.Progressbar(root, mode="determinate", value=0)
+    status_label = tk.Label(root, text="", fg="gray")
+    file_label = tk.Label(root, text="", fg="gray")
+
+    def _cleanup():
+        bar["value"] = 0
+        file_label.config(text="")
+        status_label.config(text="")
+
+    _last_prog = [0.0]
+    def _show_progress(current, total):
+        now = time.time()
+        if now - _last_prog[0] < 0.15:
+            return
+        _last_prog[0] = now
+        root.after(0, lambda c=current, t=total: _update_progress(c, t))
+
+    def _update_progress(current, total):
+        if total > 0:
+            pct = min(int(current / total * 100), 100)
+            file_label.config(text=f"{current//1024**2}/{total//1024**2} MB")
+            bar["value"] = pct
+
+    def _show_completed():
+        bar["value"] = 100
+        file_label.config(text="")
+        status_label.config(text="Download completato!")
+
+    def _download_task():
+        from download_models import download_model, DownloadCancelled
+
+        selected = [name for name, v in vars.items() if v.get()]
+        if not selected:
+            return
+
+        base_dir = os.path.join(get_base_dir(), config["whisper"]["model_dir"])
+        total_selected = len(selected)
+
+        for i, name in enumerate(selected):
+            if cancel_event.is_set():
+                return
+
+            root.after(0, lambda n=name, idx=i, t=total_selected: (
+                status_label.config(text=f"Download {n} ({idx+1}/{t})..."),
+                bar.configure(value=0),
+                file_label.config(text=""),
+            ))
+
+            try:
+                download_model(name, base_dir, on_progress=_show_progress, cancel=cancel_event)
+                result["downloaded"].append(name)
+            except DownloadCancelled:
+                return
+            except Exception as e:
+                root.after(0, lambda: _err(e))
+                return
+
+        result["success"] = True
+        root.after(0, _show_completed)
 
     def _err(e):
-        bar.stop()
-        status.config(text=f"Errore: {e}", fg="red")
-        tk.Button(root, text="Esci", command=_ok).pack(pady=10)
+        bar["value"] = 0
+        status_label.config(text=f"❌ Errore: {e}", fg="red")
+        file_label.config(text="")
 
-    def _do():
-        base_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            config["whisper"]["model_dir"],
-        )
-        try:
-            download_model(model_size, base_dir)
-            root.after(0, _done)
-        except Exception as e:
-            root.after(0, lambda: _err(e))
+    def _start():
+        selected = [name for name, v in vars.items() if v.get()]
+        if not selected:
+            messagebox.showwarning("Nessun modello", "Seleziona almeno un modello da scaricare.", parent=root)
+            return
+        start_btn.config(state=tk.DISABLED)
+        for cb_w in frame.winfo_children():
+            cb_w.config(state=tk.DISABLED)
+        _cleanup()
+        threading.Thread(target=_download_task, daemon=True).start()
 
-    threading.Thread(target=_do, daemon=True).start()
+    def _on_close():
+        if start_btn.cget("state") == tk.DISABLED:
+            cancel_event.set()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", _on_close)
+
+    start_btn = tk.Button(root, text="Scarica selezionati", command=_start, width=20)
+    start_btn.pack(pady=5)
+
+    file_label.pack()
+    bar.pack(fill=tk.X, padx=20, pady=5)
+    status_label.pack()
+
+    tk.Button(root, text="Annulla", command=_on_close).pack(pady=5)
+
     root.mainloop()
 
+    if not result["success"] or not result["downloaded"]:
+        return False
+
+    _pick_active_model(config, result["downloaded"])
     return _model_is_available(config)
+
+
+def _pick_active_model(config, downloaded):
+    if len(downloaded) == 1:
+        config["whisper"]["model_size"] = downloaded[0]
+        save_config(config, get_config_path())
+        return
+
+    win = tk.Tk()
+    win.title("TTS - Modello attivo")
+    win.geometry("300x220")
+    win.resizable(False, False)
+    win.update_idletasks()
+    x = (win.winfo_screenwidth() // 2) - (win.winfo_width() // 2)
+    y = (win.winfo_screenheight() // 2) - (win.winfo_height() // 2)
+    win.geometry(f"+{x}+{y}")
+
+    tk.Label(win, text="Quale modello vuoi usare?", font=("", 10, "bold")).pack(pady=10)
+    v = tk.StringVar(value=downloaded[0])
+    for name in downloaded:
+        tk.Radiobutton(win, text=f"{name}  ({SIZES_LABEL[name]})", variable=v, value=name).pack(anchor="w", padx=20)
+
+    def _ok():
+        config["whisper"]["model_size"] = v.get()
+        save_config(config, get_config_path())
+        win.destroy()
+
+    tk.Button(win, text="OK", command=_ok).pack(pady=10)
+    win.wait_window()
 
 
 def main():
@@ -130,7 +269,7 @@ def main():
         )
         transcriber = None
 
-    # --- callbacks ---
+    _exit_requested = threading.Event()
 
     def _on_hotkey():
         if recorder is None:
@@ -189,7 +328,9 @@ def main():
         finally:
             _lock.release()
 
-    # --- init ---
+    def _on_exit():
+        _exit_requested.set()
+        tray.stop()
 
     hotkey = HotkeyListener(config, _on_hotkey)
     try:
@@ -200,7 +341,7 @@ def main():
 
     tray = TrayIcon(
         config=config,
-        on_exit=lambda: tray.stop(),
+        on_exit=_on_exit,
         on_model_change=_on_model_change,
         on_hotkey_change=_on_hotkey_change,
     )
