@@ -24,7 +24,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --noconsole --onedir --name TTS --icon ThaSkull.ico `
+          pyinstaller --noconsole --onefile --name TTS --icon ThaSkull.ico `
             --hidden-import faster_whisper --hidden-import ctranslate2 `
             --hidden-import tokenizers --hidden-import sounddevice `
             --hidden-import soundfile --hidden-import PIL._tkinter_finder `
@@ -38,16 +38,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TTS-exe
-          path: dist/TTS/
-
-      - name: Zip for release
-        if: github.event_name == 'release'
-        run: |
-          Compress-Archive -Path dist/TTS/* -DestinationPath TTS-${{ github.event.release.tag_name }}.zip
+          path: dist/TTS.exe
 
       - name: Upload to release
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.event.release.tag_name }} TTS-${{ github.event.release.tag_name }}.zip
+          gh release upload ${{ github.event.release.tag_name }} dist/TTS.exe --clobber

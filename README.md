@@ -67,9 +67,9 @@ pip install -r requirements.txt
 # Avvia direttamente (mostra console per debug)
 python main.py
 
-# Build con PyInstaller (nessuna console)
+# Build con PyInstaller (exe singolo)
 pip install pyinstaller
-pyinstaller --noconsole --onedir --name TTS --icon ThaSkull.ico ^
+pyinstaller --noconsole --onefile --name TTS --icon ThaSkull.ico ^
     --hidden-import faster_whisper --hidden-import ctranslate2 ^
     --hidden-import tokenizers --hidden-import sounddevice ^
     --hidden-import soundfile --hidden-import PIL._tkinter_finder ^
@@ -79,11 +79,10 @@ pyinstaller --noconsole --onedir --name TTS --icon ThaSkull.ico ^
     --collect-all faster_whisper --collect-all ctranslate2 ^
     --collect-all tokenizers --collect-all sounddevice main.py
 
-# L'exe si trova in dist/TTS/TTS.exe
+# L'exe singolo si trova in dist/TTS.exe
 ```
 
-> **Nota:** la prima build può richiedere 2-5 minuti. `--onedir` genera una cartella con l'exe + DLL.  
-> `--onefile` è sconsigliato (antivirus falsi positivi, avvio più lento).
+> La prima build richiede 3-5 minuti. L'exe generato (~200 MB) contiene tutte le librerie incluse.
 
 ## Requisiti
 
