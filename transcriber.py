@@ -58,7 +58,22 @@ class Transcriber:
         if not self._ready:
             self.wait_ready()
 
-        segments, _ = self._model.transcribe(audio, language="it", beam_size=5)
+        segments, info = self._model.transcribe(
+            audio,
+            language="it",
+            beam_size=5,
+            no_speech_threshold=0.6,
+            log_prob_threshold=-1.0,
+            compression_ratio_threshold=2.4,
+            condition_on_previous_text=False,
+            vad_filter=True,
+            vad_parameters=dict(
+                threshold=0.5,
+                min_speech_duration_ms=250,
+                max_speech_duration_s=30,
+                min_silence_duration_ms=500,
+            ),
+        )
         text = " ".join(segment.text for segment in segments)
         return text.strip()
 

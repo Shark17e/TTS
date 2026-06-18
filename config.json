@@ -1,7 +1,10 @@
 {
   "hotkey": {
-    "modifiers": [],
-    "key": "copilot"
+    "modifiers": [
+      "alt",
+      "shift"
+    ],
+    "key": "space"
   },
   "whisper": {
     "model_size": "medium",
