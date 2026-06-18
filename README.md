@@ -13,7 +13,7 @@ Trascrivi la voce in testo con Whisper (offline, 100% locale) e incolla il risul
 
 Scarica l'ultima release da [GitHub Releases](https://github.com/Shark17e/TTS/releases):
 
-1. **TTS-vX.X.X.zip** — contiene l'exe già compilato. Estrai in una cartella e avvia `TTS.exe`.
+1. **STT-vX.X.X.zip** — contiene l'exe già compilato. Estrai in una cartella e avvia `STT.exe`.
 2. Scarica i modelli Whisper (vedi sotto) nella cartella `whisper-models/` accanto all'exe.
 
 ## Modelli
@@ -48,9 +48,9 @@ Cambia il modello attivo dal menu tray (click destro sull'icona → _Modello_) o
 
 ### Da release (consigliato)
 
-1. Scarica `TTS-vX.X.X.zip` dalla sezione [Releases](https://github.com/Shark17e/TTS/releases)
-2. Estrai in una cartella (es. `C:\Programmi\TTS\`)
-3. Avvia `TTS.exe` — appare l'icona nella system tray
+1. Scarica `STT-vX.X.X.zip` dalla sezione [Releases](https://github.com/Shark17e/TTS/releases)
+2. Estrai in una cartella (es. `C:\Programmi\STT\`)
+3. Avvia `STT.exe` — appare l'icona nella system tray
 4. Se il modello non è presente, il programma ti chiederà se scaricarlo
 5. Premi il tasto **Copilot** (o l'hotkey configurato) per dettare
 
@@ -58,8 +58,8 @@ Cambia il modello attivo dal menu tray (click destro sull'icona → _Modello_) o
 
 ```powershell
 # Clona la repo
-git clone https://github.com/Shark17e/TTS.git
-cd TTS
+git clone https://github.com/Shark17e/STT.git
+cd STT
 
 # Installa dipendenze
 pip install -r requirements.txt
@@ -69,7 +69,7 @@ python main.py
 
 # Build con PyInstaller (exe singolo)
 pip install pyinstaller
-pyinstaller --noconsole --onefile --name TTS --icon ThaSkull.ico ^
+pyinstaller --noconsole --onefile --name STT --icon ThaSkull.ico ^
     --hidden-import faster_whisper --hidden-import ctranslate2 ^
     --hidden-import tokenizers --hidden-import sounddevice ^
     --hidden-import soundfile --hidden-import PIL._tkinter_finder ^
@@ -79,7 +79,7 @@ pyinstaller --noconsole --onefile --name TTS --icon ThaSkull.ico ^
     --collect-all faster_whisper --collect-all ctranslate2 ^
     --collect-all tokenizers --collect-all sounddevice main.py
 
-# L'exe singolo si trova in dist/TTS.exe
+# L'exe singolo si trova in dist/STT.exe
 ```
 
 > La prima build richiede 3-5 minuti. L'exe generato (~200 MB) contiene tutte le librerie incluse.
@@ -138,7 +138,7 @@ Se la tastiera ha il tasto Copilot (Windows 11):
 ## Struttura cartelle
 
 ```
-TTS/
+STT/
 ├── main.py                # Entry point
 ├── config.py              # Caricamento/salvataggio config.json
 ├── config.json            # Impostazioni utente
